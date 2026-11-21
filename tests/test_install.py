@@ -3,6 +3,7 @@ from homeassistant.components.update import UpdateEntityFeature
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMockResponse
 
 from custom_components.nas_health.const import DOMAIN
 
@@ -15,6 +16,7 @@ JOB = {"id": "20261122T080000-abc123", "key": "updates.containers/app:frigate", 
 @pytest.fixture(autouse=True)
 def fast_poll(monkeypatch):
     monkeypatch.setattr("custom_components.nas_health.update.JOB_POLL_SECONDS", 0)
+    monkeypatch.setattr("custom_components.nas_health.update.RECHECK_POLL_SECONDS", 0)
 
 
 async def setup(hass, token="tok-123"):
@@ -46,6 +48,26 @@ async def test_install_success(hass: HomeAssistant, mock_api, aioclient_mock):
     posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]
     assert posts and posts[0][2] == {"key": "updates.containers/app:frigate"}
     assert posts[0][3]["Authorization"] == "Bearer tok-123"
+
+
+async def test_install_waits_for_recheck_then_refreshes(hass: HomeAssistant, mock_api, aioclient_mock):
+    """The job succeeds before nas-health has re-run the check; HA must wait for that result."""
+    await setup(hass)
+    aioclient_mock.post(f"{URL}/api/v1/install", status=202, json={"job": JOB})
+    answers = [JOB | {"state": "running"}, JOB | {"state": "succeeded", "rechecked": False},
+               JOB | {"state": "succeeded", "rechecked": False}, JOB | {"state": "succeeded", "rechecked": True}]
+
+    async def job_answer(method, url, data):
+        return AiohttpClientMockResponse(method, url, json={"job": answers.pop(0)})
+
+    aioclient_mock.get(f"{URL}/api/v1/jobs/{JOB['id']}", side_effect=job_answer)
+    before = sum(1 for c in aioclient_mock.mock_calls if str(c[1]).endswith("/api/v1/updates"))
+    await hass.services.async_call("update", "install", {"entity_id": ENTITY}, blocking=True)
+    assert answers == []                                   # polled until rechecked
+    calls = [str(c[1]) for c in aioclient_mock.mock_calls]
+    last_job = max(i for i, u in enumerate(calls) if "/api/v1/jobs/" in u)
+    assert any(u.endswith("/api/v1/updates") for u in calls[last_job:])   # refreshed right after
+    assert sum(1 for u in calls if u.endswith("/api/v1/updates")) > before
 
 
 async def test_install_refused(hass: HomeAssistant, mock_api, aioclient_mock):

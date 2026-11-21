@@ -19,7 +19,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import devices
 from .api import NasHealthError, NasHealthInstallError
-from .const import CONF_INSTALL_TOKEN, JOB_MAX_SECONDS, JOB_POLL_SECONDS
+from .const import (CONF_INSTALL_TOKEN, JOB_MAX_SECONDS, JOB_POLL_SECONDS, RECHECK_MAX_SECONDS,
+                    RECHECK_POLL_SECONDS)
 from .coordinator import NasHealthCoordinator
 from .entity import NasHealthEntity, add_new
 
@@ -87,17 +88,25 @@ class NasHealthUpdate(NasHealthEntity, UpdateEntity):
             while job.get("state") in ("queued", "running"):
                 if time.monotonic() > deadline:
                     raise HomeAssistantError(f"{self._attr_name}: still running after {JOB_MAX_SECONDS // 60} min")
-                await asyncio.sleep(JOB_POLL_SECONDS)
-                try:
-                    job = await api.job(job["id"])
-                except NasHealthError:
-                    continue            # e.g. nginx restarting during its own update
+                job = await self._poll(api, job)
             if job.get("state") != "succeeded":
                 raise HomeAssistantError(f"{self._attr_name}: {job.get('message') or 'install failed'}")
+            # nas-health re-runs the check after the job; wait for that result, so the
+            # entity shows the new version instead of the state from before the install
+            deadline = time.monotonic() + RECHECK_MAX_SECONDS
+            while not job.get("rechecked", True) and time.monotonic() < deadline:
+                job = await self._poll(api, job, RECHECK_POLL_SECONDS)
         finally:
             self._installing = False
-            await self.coordinator.async_request_refresh()
+            await self.coordinator.async_refresh()
             self.async_write_ha_state()
+
+    async def _poll(self, api, job: dict, every: float = JOB_POLL_SECONDS) -> dict:
+        await asyncio.sleep(every)
+        try:
+            return await api.job(job["id"])
+        except NasHealthError:
+            return job              # e.g. nginx restarting during its own update
 
     @property
     def installed_version(self) -> str | None:
