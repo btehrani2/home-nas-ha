@@ -1,0 +1,50 @@
+blueprint:
+  name: NAS Health alerts
+  description: >-
+    Push a notification when a nas-health check turns red (and optionally yellow),
+    and optionally when it recovers.
+  domain: automation
+  input:
+    notify_device:
+      name: Device to notify
+      description: A phone with the Home Assistant Companion app.
+      selector:
+        device:
+          integration: mobile_app
+    include_yellow:
+      name: Also notify for yellow
+      default: false
+      selector:
+        boolean: {}
+    notify_recovery:
+      name: Notify when a problem clears
+      default: true
+      selector:
+        boolean: {}
+
+trigger:
+  - platform: event
+    event_type: nas_health_state_changed
+
+variables:
+  include_yellow: !input include_yellow
+  notify_recovery: !input notify_recovery
+  new: "{{ trigger.event.data.new_color }}"
+  old: "{{ trigger.event.data.old_color }}"
+
+condition:
+  - condition: template
+    value_template: >-
+      {{ new == 'red' or (include_yellow and new == 'yellow')
+         or (notify_recovery and old in ['red', 'yellow'] and new == 'green') }}
+
+action:
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: >-
+      NAS {{ 'problem' if new in ['red', 'yellow'] else 'recovered' }}: {{ trigger.event.data.name }}
+    message: >-
+      {{ trigger.event.data.summary }}{% if new in ['red', 'yellow'] and trigger.event.data.action %}
+      Action: {{ trigger.event.data.action }}{% endif %}
+mode: queued

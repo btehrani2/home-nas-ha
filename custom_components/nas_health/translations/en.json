@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to nas-health",
+        "description": "Address of the nas-health API as published by the web proxy, for example https://nas.example.org/health",
+        "data": {"url": "URL", "name": "Name of the NAS", "verify_ssl": "Verify the TLS certificate"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach a nas-health API at this address.",
+      "invalid_url": "The address must start with https:// or http://"
+    },
+    "abort": {"already_configured": "This nas-health instance is already set up."}
+  },
+  "issues": {
+    "check_problem": {
+      "title": "{name}: {summary}",
+      "description": "nas-health reports a problem with **{name}**: {summary}\n\n**What to do:** {action}"
+    }
+  }
+}
