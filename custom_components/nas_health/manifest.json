@@ -1,12 +1,14 @@
 {
   "domain": "nas_health",
   "name": "NAS Health",
-  "codeowners": ["@btehrani2"],
+  "codeowners": [
+    "@btehrani2"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/btehrani2/home-nas-ha",
   "integration_type": "hub",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/btehrani2/home-nas-ha/issues",
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

@@ -4,19 +4,36 @@
       "user": {
         "title": "Connect to nas-health",
         "description": "Address of the nas-health API as published by the web proxy, for example https://nas.example.org/health",
-        "data": {"url": "URL", "name": "Name of the NAS", "verify_ssl": "Verify the TLS certificate"}
+        "data": {
+          "url": "URL",
+          "name": "Name of the NAS",
+          "verify_ssl": "Verify the TLS certificate"
+        }
       }
     },
     "error": {
       "cannot_connect": "Could not reach a nas-health API at this address.",
       "invalid_url": "The address must start with https:// or http://"
     },
-    "abort": {"already_configured": "This nas-health instance is already set up."}
+    "abort": {
+      "already_configured": "This nas-health instance is already set up."
+    }
   },
   "issues": {
     "check_problem": {
       "title": "{name}: {summary}",
       "description": "nas-health reports a problem with **{name}**: {summary}\n\n**What to do:** {action}"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Install updates",
+        "description": "Install token from `sudo nas-health install-token` on the NAS. With a token, updates that nas-health allows get an Install button; leave empty for display only.",
+        "data": {
+          "install_token": "Install token"
+        }
+      }
     }
   }
 }

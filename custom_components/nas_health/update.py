@@ -1,16 +1,25 @@
 """One update entity per item reported by the nas-health update checks.
 
-Display only (no install yet). They appear under Settings → Updates.
+They appear under Settings → Updates. With an install token (NAS Health → Configure)
+items that nas-health marks as installable get an Install button; nas-health
+checks its own policy and guards again before running anything.
 """
 
 from __future__ import annotations
 
-from homeassistant.components.update import UpdateEntity
+import asyncio
+import time
+from typing import Any
+
+from homeassistant.components.update import UpdateEntity, UpdateEntityFeature
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import devices
+from .api import NasHealthError, NasHealthInstallError
+from .const import CONF_INSTALL_TOKEN, JOB_MAX_SECONDS, JOB_POLL_SECONDS
 from .coordinator import NasHealthCoordinator
 from .entity import NasHealthEntity, add_new
 
@@ -41,6 +50,7 @@ class NasHealthUpdate(NasHealthEntity, UpdateEntity):
         self._key = key
         self._attr_name = item.get("name") or key
         self._attr_title = item.get("name")
+        self._installing = False
 
     def _item(self) -> dict | None:
         return self.coordinator.data.updates.get(self._key)
@@ -48,6 +58,46 @@ class NasHealthUpdate(NasHealthEntity, UpdateEntity):
     @property
     def available(self) -> bool:
         return super().available and self._item() is not None
+
+    @property
+    def supported_features(self) -> UpdateEntityFeature:
+        token = self.coordinator.config_entry.options.get(CONF_INSTALL_TOKEN)
+        if token and (self._item() or {}).get("installable"):
+            return UpdateEntityFeature.INSTALL | UpdateEntityFeature.PROGRESS
+        return UpdateEntityFeature(0)
+
+    @property
+    def in_progress(self) -> bool:
+        job = (self._item() or {}).get("job") or {}
+        return self._installing or job.get("state") in ("queued", "running")
+
+    async def async_install(self, version: str | None, backup: bool, **kwargs: Any) -> None:
+        token = self.coordinator.config_entry.options.get(CONF_INSTALL_TOKEN)
+        if not token:
+            raise HomeAssistantError("No install token configured (NAS Health → Configure)")
+        api = self.coordinator.api
+        self._installing = True
+        self.async_write_ha_state()
+        try:
+            try:
+                job = await api.install(self._key, token)
+            except NasHealthInstallError as exc:
+                raise HomeAssistantError(f"{self._attr_name}: {exc}") from exc
+            deadline = time.monotonic() + JOB_MAX_SECONDS
+            while job.get("state") in ("queued", "running"):
+                if time.monotonic() > deadline:
+                    raise HomeAssistantError(f"{self._attr_name}: still running after {JOB_MAX_SECONDS // 60} min")
+                await asyncio.sleep(JOB_POLL_SECONDS)
+                try:
+                    job = await api.job(job["id"])
+                except NasHealthError:
+                    continue            # e.g. nginx restarting during its own update
+            if job.get("state") != "succeeded":
+                raise HomeAssistantError(f"{self._attr_name}: {job.get('message') or 'install failed'}")
+        finally:
+            self._installing = False
+            await self.coordinator.async_request_refresh()
+            self.async_write_ha_state()
 
     @property
     def installed_version(self) -> str | None:

@@ -6,16 +6,23 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_NAME, CONF_URL
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .api import NasHealthApi, NasHealthError
-from .const import CONF_VERIFY_SSL, DEFAULT_NAME, DOMAIN
+from .const import CONF_INSTALL_TOKEN, CONF_VERIFY_SSL, DEFAULT_NAME, DOMAIN
 
 
 class NasHealthConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        return NasHealthOptionsFlow()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
@@ -42,3 +49,17 @@ class NasHealthConfigFlow(ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_VERIFY_SSL, default=defaults.get(CONF_VERIFY_SSL, True)): bool,
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+
+class NasHealthOptionsFlow(OptionsFlow):
+    """Install token: enables the Install button on update entities (empty = display only)."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if user_input is not None:
+            token = (user_input.get(CONF_INSTALL_TOKEN) or "").strip()
+            return self.async_create_entry(data={CONF_INSTALL_TOKEN: token} if token else {})
+        schema = vol.Schema({
+            vol.Optional(CONF_INSTALL_TOKEN, default=self.config_entry.options.get(CONF_INSTALL_TOKEN, "")):
+                TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+        })
+        return self.async_show_form(step_id="init", data_schema=schema)

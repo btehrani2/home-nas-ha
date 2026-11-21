@@ -29,7 +29,7 @@ CHECKS = {"checks": [
 UPDATES = {"api_version": 1, "available": 2, "categories": [], "items": [
     {"key": "updates.containers/app:frigate", "check": "updates.containers", "id": "app:frigate",
      "name": "Frigate", "available": True, "installed": "0.17.0", "latest": "0.17.2", "summary": "new version",
-     "url": "https://docker.example.org"},
+     "url": "https://docker.example.org", "installable": True, "job": None},
     {"key": "updates.containers/app:nginx", "check": "updates.containers", "id": "app:nginx",
      "name": "nginx", "available": False, "installed": "1.31.9", "latest": "1.31.9"},
     {"key": "updates.fedora/other", "check": "updates.fedora", "id": "other", "name": "Fedora other updates",

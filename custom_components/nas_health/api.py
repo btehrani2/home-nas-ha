@@ -11,6 +11,10 @@ class NasHealthError(Exception):
     """The API could not be reached or answered with something unexpected."""
 
 
+class NasHealthInstallError(NasHealthError):
+    """nas-health refused or could not start an install; the message says why."""
+
+
 class NasHealthApi:
     def __init__(self, session: aiohttp.ClientSession, base_url: str) -> None:
         self._session = session
@@ -40,3 +44,23 @@ class NasHealthApi:
 
     async def updates(self) -> dict[str, Any]:
         return await self._get("/api/v1/updates")
+
+    async def install(self, key: str, token: str) -> dict[str, Any]:
+        """Ask nas-health to install the update ``key``; returns the job."""
+        url = f"{self.base_url}/api/v1/install"
+        try:
+            async with self._session.post(url, json={"key": key}, timeout=aiohttp.ClientTimeout(total=30),
+                                          headers={"Authorization": f"Bearer {token}"}) as resp:
+                try:
+                    data = await resp.json(content_type=None)
+                except ValueError:
+                    data = {}
+                if resp.status != 202:
+                    msg = (data or {}).get("error") if isinstance(data, dict) else None
+                    raise NasHealthInstallError(msg or f"HTTP {resp.status}")
+        except aiohttp.ClientError as exc:
+            raise NasHealthInstallError(f"nas-health unreachable: {exc.__class__.__name__}") from exc
+        return data["job"]
+
+    async def job(self, job_id: str) -> dict[str, Any]:
+        return (await self._get(f"/api/v1/jobs/{job_id}"))["job"]

@@ -28,7 +28,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: NasHealthConfigEntry) ->
         name=entry.title, manufacturer="nas-health", model="NAS",
         sw_version=coordinator.data.version, configuration_url=coordinator.guide_url)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(_options_changed))
     return True
+
+
+async def _options_changed(hass: HomeAssistant, entry: NasHealthConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: NasHealthConfigEntry) -> bool:
