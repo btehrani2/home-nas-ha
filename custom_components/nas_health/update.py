@@ -19,8 +19,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import devices
 from .api import NasHealthError, NasHealthInstallError
-from .const import (CONF_INSTALL_TOKEN, JOB_MAX_SECONDS, JOB_POLL_SECONDS, RECHECK_MAX_SECONDS,
-                    RECHECK_POLL_SECONDS)
+from .const import (CONF_INSTALL_TOKEN, JOB_MAX_SECONDS, JOB_POLL_SECONDS, QUEUE_MAX_SECONDS,
+                    RECHECK_MAX_SECONDS, RECHECK_POLL_SECONDS)
 from .coordinator import NasHealthCoordinator
 from .entity import NasHealthEntity, add_new
 
@@ -84,10 +84,15 @@ class NasHealthUpdate(NasHealthEntity, UpdateEntity):
                 job = await api.install(self._key, token)
             except NasHealthInstallError as exc:
                 raise HomeAssistantError(f"{self._attr_name}: {exc}") from exc
-            deadline = time.monotonic() + JOB_MAX_SECONDS
+            # a job may wait in nas-health's queue ("Update all"); the run time counts from its start
+            deadline = time.monotonic() + QUEUE_MAX_SECONDS + JOB_MAX_SECONDS
+            running = False
             while job.get("state") in ("queued", "running"):
+                if job.get("state") == "running" and not running:
+                    running, deadline = True, time.monotonic() + JOB_MAX_SECONDS
                 if time.monotonic() > deadline:
-                    raise HomeAssistantError(f"{self._attr_name}: still running after {JOB_MAX_SECONDS // 60} min")
+                    raise HomeAssistantError(f"{self._attr_name}: still running after {JOB_MAX_SECONDS // 60} min"
+                                             if running else f"{self._attr_name}: still waiting in the queue")
                 job = await self._poll(api, job)
             if job.get("state") != "succeeded":
                 raise HomeAssistantError(f"{self._attr_name}: {job.get('message') or 'install failed'}")

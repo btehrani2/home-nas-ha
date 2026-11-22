@@ -70,6 +70,20 @@ async def test_install_waits_for_recheck_then_refreshes(hass: HomeAssistant, moc
     assert sum(1 for u in calls if u.endswith("/api/v1/updates")) > before
 
 
+async def test_update_all_waits_in_queue(hass: HomeAssistant, mock_api, aioclient_mock):
+    """A queued job (another install runs first) keeps the entity installing until it is done."""
+    await setup(hass)
+    aioclient_mock.post(f"{URL}/api/v1/install", status=202, json={"job": JOB | {"launched_at": None}})
+    answers = [JOB, JOB, JOB | {"state": "running"}, JOB | {"state": "succeeded", "rechecked": True}]
+
+    async def job_answer(method, url, data):
+        return AiohttpClientMockResponse(method, url, json={"job": answers.pop(0)})
+
+    aioclient_mock.get(f"{URL}/api/v1/jobs/{JOB['id']}", side_effect=job_answer)
+    await hass.services.async_call("update", "install", {"entity_id": ENTITY}, blocking=True)
+    assert answers == []
+
+
 async def test_install_refused(hass: HomeAssistant, mock_api, aioclient_mock):
     await setup(hass)
     aioclient_mock.post(f"{URL}/api/v1/install", status=409,

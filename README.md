@@ -46,7 +46,7 @@ Installing is off on the NAS until `[install] enabled = true` is set in nas-heal
 once; only its hash is stored), then enter it under Settings → Devices & services →
 NAS Health → **Configure**. Update entities of allowed items then show **Install**.
 Home Assistant only asks: nas-health checks its allow/deny list and that the backup
-and storage checks are green, runs the update as a systemd job (containers through
+and storage checks are green, queues the update (one at a time, so "Update all" works), runs it as a systemd job (containers through
 Arcane, Fedora with dnf, Flatpak), and Home Assistant shows progress until it ends.
 Refusals and failures appear as an error with the reason. Leave the token empty for
 display only.
